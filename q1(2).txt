@@ -1,0 +1,54 @@
+%主要简化:
+
+%缩短变量名
+%合并滤波器生成步骤
+%精简滤波器函数逻辑
+%移除冗余延迟计算
+%简化绘图代码
+
+% Init
+s = [-3,1,-1,-3,3];  % symbols
+n = 16;              % samples/symbol
+w = 6;               % span
+
+% Filters
+[h,~] = rrc(0.5,n,w);  % sqrt-RC
+h = h/max(abs(h));
+g = conv(h,h)/max(conv(h,h));  % RC
+
+% Tx/Rx
+x = zeros(1,n*w+1);
+y = zeros(1,48*w+1);
+for i = 1:length(s)
+    x((i-1)*24+1) = s(i);
+    y((i-1)*48+1) = s(i);
+end
+
+% Out
+tx = conv(x,h);
+rx = conv(y,g);
+
+% Plot
+figure;
+t = 0:4;
+subplot(211);
+plot((-47:1:145)/24,tx,'c','LineWidth',1.5);
+hold on; stem(t,tx(t*24+48));
+xlim([-0.3,4.5]); grid on;
+title('TX');
+
+subplot(212);
+plot((-93:1:291)/48,rx,'b','LineWidth',1.5);
+hold on; stem(t,rx(t*48+94));
+xlim([-0.3,4.5]); grid on;
+title('RX');
+
+function [p,t] = rrc(b,L,N)  % sqrt-RC filter
+    t = (-N/2:1/L:N/2);
+    n = sin(pi*t*(1-b)) + 4*b*t.*cos(pi*t*(1+b));
+    d = pi*t.*(1-(4*b*t).^2);
+    p = n./d;
+    p(isnan(p)) = 1;
+    v = b*((1+2/pi)*sin(pi/(4*b))+(1-2/pi)*cos(pi/(4*b)));
+    p(abs(t*4*b)==1) = v;
+end

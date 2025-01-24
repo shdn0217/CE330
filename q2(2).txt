@@ -1,0 +1,36 @@
+clear; clc; close all;
+%主要简化：
+
+%使用cell数组存储QPSK/16QAM参数
+%缩短变量名并合并类似操作
+%精简BER计算函数
+%简化绘图代码
+% Init
+n = 1e6;
+s = 0:10;
+m = {[0 1 3 2], [0 1 3 2 4 5 7 6 12 13 15 14 8 9 11 10]};
+d = {randi([0,3],1,n), randi([0,15],1,n)};
+x = {qammod(m{1}(d{1}+1),4), qammod(m{2}(d{2}+1),16)};
+
+% BER calc
+b = {sim(x{1},d{1},s+3,m{1},4), sim(x{2},d{2},s+6,m{2},16)};
+
+% Plot
+figure('Color','w');
+semilogy(s,cell2mat(b),'LineWidth',2);
+grid on;
+xlabel('SNR'); ylabel('BER');
+legend('QPSK','16QAM');
+ylim([1e-5 1]);
+
+function b = sim(x,d,s,m,k)
+    b = zeros(1,length(s));
+    p = mean(abs(x).^2);
+    
+    for i = 1:length(s)
+        n = sqrt(p/(2*10^(s(i)/10)))*(randn(size(x))+1i*randn(size(x)));
+        r = x + n;
+        v = m(qamdemod(r,k)+1);
+        [~,b(i)] = biterr(d,v,log2(k));
+    end
+end

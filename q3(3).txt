@@ -1,0 +1,32 @@
+clear; clc; 
+%缩短变量名
+%合并星座点生成
+%精简错误计算
+%简化绘图代码
+% Init
+n = 1e6;
+s = 0:10;
+t = 20;
+c = (1+1i)/sqrt(2)*[1 -1 1i -1i];
+b = zeros(1,length(s));
+
+parfor i = 1:length(s)
+    e = 0;
+    v = 1/(10^(s(i)/10));
+    
+    for k = 1:t
+        d = randi([0 1],2,n);
+        x = c(d(1,:)*2 + d(2,:) + 1);
+        r = x + sqrt(v/2)*(randn(1,n) + 1i*randn(1,n));
+        [~,m] = min(abs(r.'-c).',[],1);
+        e = e + sum(sum([floor((m-1)/2); mod(m-1,2)] ~= d));
+    end
+    b(i) = e/(2*n*t);
+end
+
+figure('Color','w');
+semilogy(s,[berawgn(10.^(s/10),'psk',4,'nondiff'); b],'LineWidth',2);
+grid on;
+xlabel('SNR'); ylabel('BER');
+legend('Theory','Sim');
+ylim([1e-5 1]);
