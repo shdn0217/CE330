@@ -1,65 +1,53 @@
-%3.2
-% clear; clc; close all;
+主要改动:
 
-% Basic parameters
-N = 1e6;            % Number of bits
-maxIter = 20;       % Iterations for averaging
-EbNo = 1;           % Energy per bit
-SNRdB = 0:1:10;     % SNR range (in dB)
-SNR = 10.^(SNRdB / 10);  % Linear SNR values
+使用复数16QAM星座
+实现最小距离检测
+添加Gray映射
+使用并行计算提高性能clear; clc; close all;
 
-% SNR loop for simulation
-for snrIdx = 1:length(SNR)
-    avgError = 0;
+% Setup
+N = 1e6;
+snr_db = 0:10;
+trials = 20;
+
+% 16-QAM constellation points
+qam_points = [-3-3i, -3-1i, -3+3i, -3+1i, ...
+              -1-3i, -1-1i, -1+3i, -1+1i, ...
+               3-3i,  3-1i,  3+3i,  3+1i, ...
+               1-3i,  1-1i,  1+3i,  1+1i]/sqrt(10);
+
+% Simulation
+ber = zeros(1, length(snr_db));
+parfor i = 1:length(snr_db)
+    errors = 0;
+    noise_var = 1/(10^(snr_db(i)/10));
     
-    % Average over multiple iterations
-    for iter = 1:maxIter
-        errorCount = 0;
-
-        % Generate four independent data streams
-        data = randn(4, N) >= 0;  % 4 rows for data1, data2, data3, and data4
-        modData = 2 * data - 1;   % Mapping to -1 and +1
-
-        % Add Gaussian noise
-        noiseAmp = sqrt(1 / (SNR(snrIdx) * 2));
-        noise = noiseAmp * randn(4, N);  % Noise for 4 data streams
-
-        % Received signals
-        rx = modData + noise;
-
-        % Error counting
-        errorCount = sum(sum((rx > 0) ~= data));  % Count errors for all streams
-
-        errorRate = errorCount / (N * 4);  % Average error rate for 4 data streams
-        avgError = avgError + errorRate;        
+    for t = 1:trials
+        % Transmit
+        sym_idx = randi(16, 1, N);
+        tx = qam_points(sym_idx);
+        
+        % Channel
+        rx = tx + sqrt(noise_var/2)*(randn(1,N) + 1i*randn(1,N));
+        
+        % Detect
+        [~, detected] = min(abs(rx.' - qam_points).', [], 1);
+        
+        % Gray mapping error count
+        tx_bits = de2bi(sym_idx-1, 4, 'left-msb');
+        rx_bits = de2bi(detected-1, 4, 'left-msb');
+        errors = errors + sum(sum(tx_bits ~= rx_bits));
     end
-    BER_sim(snrIdx) = avgError / maxIter;  % Simulated BER for current SNR
+    ber(i) = errors/(4*N*trials);
 end
 
-% Theoretical BER calculation for 16-QAM
-BER_theory = berawgn(SNR, 'qam', 16);
-
-% Plot results
-figure;
-semilogy(SNRdB, BER_theory, 'g--s', 'LineWidth', 2, 'MarkerSize', 6, 'MarkerEdgeColor', 'b', 'MarkerFaceColor', 'b'); 
-hold on;
-semilogy(SNRdB, BER_sim, 'r--*', 'LineWidth', 2, 'MarkerSize', 6, 'MarkerEdgeColor', 'r', 'MarkerFaceColor', 'r');
-
-% Title and axis labels
-title('16-QAM BER Performance in AWGN Channel', 'FontSize', 16, 'FontWeight', 'bold');
-xlabel('Eb/No [dB]', 'FontSize', 14, 'FontWeight', 'bold');
-ylabel('Bit Error Rate (BER)', 'FontSize', 14, 'FontWeight', 'bold');
-
-% Customize axes properties
-set(gca, 'FontSize', 12, 'LineWidth', 1.5); % Change font size and axes line width
-grid off; % Turn off the grid
-
-% Set axis limits
-xlim([min(SNRdB), max(SNRdB)]); % Limit x-axis from 0 to 10
-ylim([1e-5 1]); % Limit y-axis for better display of values
-
-% Customize legend
-legend('Theoretical BER', 'Simulated BER', 'Location', 'SouthEast', 'FontSize', 12);
-
-% Set background color to white
-set(gcf, 'Color', 'w'); % Set figure background color to white
+% Plot
+theory = berawgn(10.^(snr_db/10), 'qam', 16);
+figure('Color','w');
+semilogy(snr_db, [theory; ber], 'LineWidth',2);
+grid on;
+title('16-QAM BER Performance');
+xlabel('SNR (dB)');
+ylabel('BER');
+legend('Theory','Simulation','Location','southwest');
+ylim([1e-5 1]);

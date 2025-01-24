@@ -1,74 +1,52 @@
+主要变化：
+
+使用复数QPSK星座
+使用最小距离检测
+向量化符号映射
+添加并行计算
+
 clear; clc; close all;
 
-% Basic parameters
-N = 1e6;               % Number of transmitted bits
-maxIter = 20;          % Iteration count for each SNR
-EbNo = 1;              % Energy per bit
-SNRdB = 0:1:10;        % SNR range (in dB)
-SNR = 10.^(SNRdB/10);  % Linear SNR
+% Setup
+N = 1e6; 
+SNRdB = 0:10;
+trials = 20;
+ber = zeros(1, length(SNRdB));
 
-% SNR loop
-for snrIdx = 1:length(SNR)
-    avgError = 0;
+% Run simulation
+parfor snr_idx = 1:length(SNRdB)
+    error_sum = 0;
+    noise_power = 1/(10^(SNRdB(snr_idx)/10));
     
-    % Average over multiple iterations
-    for iter = 1:maxIter
-        errorCount = 0;
-
-        % Generate random data
-        dataI = randn(1, N) >= 0;
-        dataQ = randn(1, N) >= 0;
-        modI = 2*dataI - 1;
-        modQ = 2*dataQ - 1;
-
-        % Add Gaussian noise
-        noiseAmp = sqrt(1/(SNR(snrIdx)*2));
-        noiseI = noiseAmp * randn(1, N);
-        noiseQ = noiseAmp * randn(1, N);
-        rxI = modI + noiseI;
-        rxQ = modQ + noiseQ;
-
-        % Bit error counting
-        for k = 1:N
-            if ((rxI(k) > 0 && dataI(k) == 0) || (rxI(k) < 0 && dataI(k) == 1) || ...
-                (rxQ(k) > 0 && dataQ(k) == 0) || (rxQ(k) < 0 && dataQ(k) == 1))
-                errorCount = errorCount + 1;
-            end
-        end
-
-        errorRate = errorCount / N;
-        avgError = avgError + errorRate;        
+    for t = 1:trials
+        % Generate QPSK constellation
+        symbols = (1+1i)/sqrt(2) * [1 -1 1i -1i];
+        bits = randi([0 1], 2, N);
+        symbol_idx = bits(1,:)*2 + bits(2,:) + 1;
+        tx_signal = symbols(symbol_idx);
+        
+        % Channel
+        noise = sqrt(noise_power/2)*(randn(1,N) + 1i*randn(1,N));
+        rx_signal = tx_signal + noise;
+        
+        % Detect symbols
+        [~, detected] = min(abs(rx_signal.' - symbols).', [], 1);
+        detected_bits = [floor((detected-1)/2); mod(detected-1,2)];
+        
+        % Count errors
+        error_sum = error_sum + sum(sum(bits ~= detected_bits));
     end
     
-    BER_sim(snrIdx) = avgError / maxIter;  % Simulated BER
+    ber(snr_idx) = error_sum/(2*N*trials);
 end
 
-% Theoretical BER calculation
-BER_theory = berawgn(SNR, 'psk', 4, 'nondiff');
 % Plot results
-figure;
-semilogy(SNRdB, BER_theory, 'b-s', 'LineWidth', 2, 'MarkerSize', 6, 'MarkerEdgeColor', 'b', 'MarkerFaceColor', 'b'); 
-hold on;
-semilogy(SNRdB, BER_sim, 'r-*', 'LineWidth', 2, 'MarkerSize', 6, 'MarkerEdgeColor', 'r', 'MarkerFaceColor', 'r');
-
-% Title and axis labels
-title('QPSK BER Performance in AWGN Channel', 'FontSize', 16, 'FontWeight', 'bold');
-xlabel('Eb/No [dB]', 'FontSize', 14, 'FontWeight', 'bold');
-ylabel('Bit Error Rate (BER)', 'FontSize', 14, 'FontWeight', 'bold');
-
-% Customize axes properties
-set(gca, 'FontSize', 12, 'LineWidth', 1.5); % Change font size and axes line width
-grid off; % Turn off the grid
-ax = gca; % Get current axes
-ax.XGrid = 'off'; % Disable X Grid
-ax.YGrid = 'off'; % Disable Y Grid
-
-% Set axis limits
-xlim([min(SNRdB), max(SNRdB)]); % Limit x-axis from 0 to 10
-ylim([1e-5 1]); % Limit y-axis for better display of values
-
-% Customize legend
-legend('Theoretical BER', 'Simulated BER', 'Location', 'SouthEast', 'FontSize', 12);
-
-% Set background color to white
-set(gcf, 'Color', 'w'); % Set figure background color to white
+figure('Color','w');
+theory = berawgn(10.^(SNRdB/10), 'psk', 4, 'nondiff');
+semilogy(SNRdB, [theory; ber], 'LineWidth',2);
+grid on;
+xlabel('SNR (dB)');
+ylabel('BER');
+title('QPSK Performance');
+legend('Theoretical','Simulated','Location','southwest');
+ylim([1e-5 1]);
